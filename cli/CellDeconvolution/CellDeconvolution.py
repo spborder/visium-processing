@@ -195,7 +195,7 @@ def main(*args):
         integrator = robjects.globalenv['integrate_spatial']
         integrator(
             file_info['name'],
-            args.organ
+            ORGAN_REF_KEY[args.organ]
         )
 
         print(os.listdir(os.getcwd()+'/'))

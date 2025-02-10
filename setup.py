@@ -48,7 +48,7 @@ setup(
         # scientific packages
         'girder-slicer-cli-web',
         'girder-client',
-        'fusion-tools>=3.0.6'
+        'fusion-tools>=3.1.2',
         'ctk-cli',
         'rpy2',
     ],

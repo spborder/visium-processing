@@ -2,12 +2,12 @@ FROM satijalab/seurat:5.0.0
 
 LABEL maintainer="Sam Border CMI Lab <samuel.border@medicine.ufl.edu>"
 
-
 RUN apt-get update && \
-    apt-get install --yes --no-install-recommends software-properties-common && \
+    apt-get install --yes --no-install-recommends software-properties-common gpg-agent && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get autoremove && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get --yes --no-install-recommends -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" dist-upgrade && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -20,9 +20,8 @@ RUN apt-get update && \
     unzip \
     libhdf5-dev \
     libpython3-dev \
-    python3.8-dev \
-    python3.8-distutils \
-    software-properties-common \
+    python3.10-dev \
+    python3.10-distutils \
     libssl-dev \
     libffi-dev \
     # Standard build tools \
@@ -47,8 +46,8 @@ WORKDIR /
 # Make a specific version of python the default and install pip
 RUN rm -f /usr/bin/python && \
     rm -f /usr/bin/python3 && \
-    ln `which python3.8` /usr/bin/python && \
-    ln `which python3.8` /usr/bin/python3 && \
+    ln `which python3.10` /usr/bin/python && \
+    ln `which python3.10` /usr/bin/python3 && \
     curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py && \
     python get-pip.py && \
     rm get-pip.py
@@ -57,17 +56,48 @@ RUN rm -f /usr/bin/python && \
 RUN which  python && \
     python --version
 
-RUN R -e 'devtools::install_github("satijalab/seurat","seurat5")'
-RUN R -e 'devtools::install_github("satijalab/seurat-data","seurat5")'
-RUN R -e 'BiocManager::install("glmGamPoi")'
-RUN R -e 'BiocManager::install("TFBSTools")'
-RUN R -e 'devtools::install_github("satijalab/azimuth","master")'
-RUN R -e 'library(Seurat)'
-ENV build_path=$PWD/build
+# Required for R package installations
+RUN apt-get update && \
+    apt-get install -y libv8-dev \
+    libbz2-dev \
+    liblzma-dev \
+    libglpk-dev \
+    libgsl-dev \
+    libpcre2-dev \
+    libudunits2-dev \
+    libgdal-dev \
+    libpq-dev \
+    unixodbc \
+    unixodbc-dev \
+    libfontconfig1-dev \
+    libcairo2-dev \ 
+    libharfbuzz-dev \
+    libfribidi-dev
+
+## Taken from Azimuth Dockerfile
+RUN mkdir lzf
+WORKDIR /lzf
+RUN wget https://raw.githubusercontent.com/h5py/h5py/3.0.0/lzf/lzf_filter.c https://raw.githubusercontent.com/h5py/h5py/3.0.0/lzf/lzf_filter.h
+RUN mkdir lzf
+WORKDIR /lzf/lzf
+RUN wget https://raw.githubusercontent.com/h5py/h5py/3.0.0/lzf/lzf/lzf_c.c https://raw.githubusercontent.com/h5py/h5py/3.0.0/lzf/lzf/lzf_d.c https://raw.githubusercontent.com/h5py/h5py/3.0.0/lzf/lzf/lzfP.h https://raw.githubusercontent.com/h5py/h5py/3.0.0/lzf/lzf/lzf.h
+WORKDIR /lzf
+RUN gcc -O2 -fPIC -shared lzf/*.c lzf_filter.c -I /usr/include/hdf5/serial/ -lhdf5_serial -o liblzf_filter.so
+WORKDIR /
+ENV HDF5_PLUGIN_PATH=/lzf
+
+## Installing R packages
+COPY install_R_packages.r .
+RUN R -e 'remotes::install_version("Matrix",version="1.6.4",repos="https://cran.r-project.org",dependencies=TRUE)'
+RUN R -e 'install.packages("SeuratObject",version=">= 5.0.2",repos="https://cran.r-project.org",dependencies=TRUE)'
+RUN Rscript install_R_packages.r BiocManager BSgenome.Hsapiens.UCSC.hg38 glmGamPoi GenomeInfoDb GenomicRanges TFBSTools JASPAR2020 EnsDb.Hsapiens.v86 IRanges Rsamtools S4Vectors
+RUN R -e 'remotes::install_github("satijalab/azimuth",ref="master",dependencies=TRUE)'
+
+ENV build_path=/build
 ENV PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
 
 # Copying over plugin files
-ENV plugin_path = visium-processing
+ENV plugin_path=.
 RUN mkdir -p $plugin_path
 
 RUN apt-get update && \
